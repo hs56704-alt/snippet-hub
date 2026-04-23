@@ -1,0 +1,194 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  username  String   @unique
+  name      String?
+  image     String?  
+  bio       String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// Relations 
+  snippets    Snippet[]
+  comments    Comment[]
+  likes       Like[]
+  bookmarks   Bookmark[]
+
+   /// Self-referential many-to-many for follow graph.
+  followers   Follow[]  @relation("UserFollowers")
+  following   Follow[]  @relation("UserFollowing")
+
+  /// The adapter stores OAuth account tokens in the Account model.
+  accounts    Account[]
+  sessions    Session[]
+
+  @@map("users")
+}
+
+// NEXTAUTH REQUIRED MODELS
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String  
+  providerAccountId String  
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId]) /// A user can only link one account per provider
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+// SNIPPET MODEL
+
+model Snippet {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  code        String   @db.Text  /// @db.Text = PostgreSQL TEXT type (unlimited length)
+  language    String             
+  authorId    String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+ /// Relations
+  author    User         @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  comments  Comment[]
+  likes     Like[]
+  bookmarks Bookmark[]
+  tags      SnippetTag[]
+
+  /// Index on authorId for fast "snippets by user" queries
+  @@index([authorId])
+  /// Index on language for filtering feed by language
+  @@index([language])
+  /// Index on createdAt for fast feed sorting (newest first)
+  @@index([createdAt(sort: Desc)])
+  @@map("snippets")
+}
+
+// COMMENT MODEL
+
+model Comment {
+  id        String   @id @default(cuid())
+  content   String   @db.Text
+  authorId  String
+  snippetId String
+  createdAt DateTime @default(now())
+
+  author  User    @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  snippet Snippet @relation(fields: [snippetId], references: [id], onDelete: Cascade)
+
+  @@index([snippetId]) /// Fast lookup: all comments for a snippet
+  @@index([authorId])  /// Fast lookup: all comments by a user
+  @@map("comments")
+}
+
+// LIKE MODEL
+
+model Like {
+  id        String   @id @default(cuid())
+  userId    String
+  snippetId String
+  createdAt DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  snippet Snippet @relation(fields: [snippetId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, snippetId]) /// THE key constraint — enforced at DB level, not just app level
+  @@index([snippetId])
+  @@map("likes")
+}
+
+// BOOKMARK MODEL
+
+model Bookmark {
+  id        String   @id @default(cuid())
+  userId    String
+  snippetId String
+  createdAt DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  snippet Snippet @relation(fields: [snippetId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, snippetId])
+  @@index([snippetId])
+  @@map("bookmarks")
+}
+
+// FOLLOW MODEL
+
+model Follow {
+  id          String   @id @default(cuid())
+  followerId  String   /// The user who clicked "Follow"
+  followingId String   /// The user who was followed
+  createdAt   DateTime @default(now())
+
+  follower  User @relation("UserFollowing", fields: [followerId], references: [id], onDelete: Cascade)
+  following User @relation("UserFollowers", fields: [followingId], references: [id], onDelete: Cascade)
+
+  @@unique([followerId, followingId]) /// Can't follow the same person twice
+  @@index([followerId])
+  @@index([followingId])
+  @@map("follows")
+}
+
+// TAG MODEL
+
+model Tag {
+  id       String       @id @default(cuid())
+  name     String       @unique /// lowercase enforced at application layer
+  snippets SnippetTag[]
+
+  @@map("tags")
+}
+
+// SNIPPET TAG JOIN TABLE (explicit many-to-many)
+
+model SnippetTag {
+  snippetId String
+  tagId     String
+
+  snippet Snippet @relation(fields: [snippetId], references: [id], onDelete: Cascade)
+  tag     Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([snippetId, tagId]) /// Composite primary key — no separate id column needed
+  @@map("snippet_tags")
+}
