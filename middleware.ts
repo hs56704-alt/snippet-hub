@@ -20,5 +20,23 @@ export default auth(function middleware(req){
     const isLoggedIn = !!session?.user;
     const isProtectedRoute = protectedRoutes.some((route) =>
     nextUrl.pathname.startsWith(route)
-);
-const isAuthRoute = authRoutes.includes(nextUrl.pathname);
+    );
+    const isAuthRoute = authRoutes.includes(nextUrl.pathname);
+
+    if(isProtectedRoute && !isLoggedIn){
+        const loginUrl = new URL("/login", nextUrl.origin);
+        loginUrl.searchParams.set("callbackUrl", nextUrl.pathname);
+        return NextResponse.redirect(loginUrl);
+    }
+
+    if (isAuthRoute && isLoggedIn) {
+        return NextResponse.redirect(new URL("/feed", nextUrl.origin));
+    }
+
+    return NextResponse.next();
+
+});
+
+export const config = {
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\..*).*)"],
+};
