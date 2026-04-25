@@ -10,10 +10,11 @@ generator client {
 model User {
   id        String   @id @default(cuid())
   email     String   @unique
-  username  String   @unique
+  username  String?   @unique
   name      String?
   image     String?  
   bio       String?
+  emailVerified DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

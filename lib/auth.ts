@@ -22,42 +22,41 @@ export const authConfig: NextAuthConfig = {
   callbacks: {
     async signIn({user}){
         if (!user.email) return false;
-
-        try{
-            const existingUser = await db.user.findUnique({
-                where : { email : user.email},
-            });
-
-            if(existingUser && !existingUser.username){
-                const baseUsername = user.email
-                .split("@")[0]
-                .toLowerCase()
-                .replace(/[^a-z0-9]/g, "");
-            
-
-            const existingUsername = await db.user.findUnique({
-                where: { username : baseUsername },
-            });
-
-            const finalUsername = existingUsername
-                                  ? `${baseUsername}${Math.floor(1000 + Math.random() * 9000)}`
-                                  : baseUsername;
-
-            await db.user.update({
-                where : { email: user.email },
-                data: { username : finalUsername },
-            })
-        }
         return true;
-    } catch (error) {
-        console.error("SignIn callback error:", error);
-        return false;
-    }
-},
+    },
+
     async session({ session, user }) {
       if (session.user) {
         session.user.id = user.id;
-        session.user.username = (user as { username : string }).username;
+        
+      const dbUser = user as {
+        username?: string | null;
+        email: string;
+        id: string;
+      };
+      if (!dbUser.username){
+        const baseUsername = dbUser.email
+          .split("@")[0]
+          .toLowerCase()
+          .replace(/[^a-z0-9]/g,"");
+
+          const existingUsername = await db.user.findUnique({
+            where: { username: baseUsername },
+          });
+
+          const finalUsername = existingUsername
+            ? `${baseUsername}${Math.floor(1000 + Math.random() * 9000)}`
+            : baseUsername;
+
+          await db.user.update({
+            where: { id: dbUser.id },
+            data : { username : finalUsername },
+          });
+
+          session.user.username = finalUsername;
+      } else {
+        session.user.username = dbUser.username;
+      }
       }
       return session;
     },
